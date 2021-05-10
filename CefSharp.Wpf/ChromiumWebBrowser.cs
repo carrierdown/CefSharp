@@ -2113,11 +2113,12 @@ namespace CefSharp.Wpf
 
             if (x != prevX || y != prevY)
             {
-                mouseTeleport.Update(xOffset, yOffset, new CefSharpPoint(x, y), new CefSharpPoint(x + rect.Width, y + rect.Height));
+                mouseTeleport.Update(xOffset, yOffset, rect, new Rect(x, y, x + rect.Width, y + rect.Height));
             }
 
             Canvas.SetLeft(popupImage, x);
-            Canvas.SetTop(popupImage, y);        }
+            Canvas.SetTop(popupImage, y);
+        }
 
         /// <summary>
         /// Handles the <see cref="E:TooltipTimerTick" /> event.
@@ -2272,8 +2273,10 @@ namespace CefSharp.Wpf
                 var point = e.GetPosition(this);
                 var modifiers = e.GetModifiers();
 
-                var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
-                browser.GetHost().SendMouseMoveEvent(adjustedPoint.X, adjustedPoint.Y, false, modifiers);
+                if (!mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y)) {
+                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                    browser.GetHost().SendMouseMoveEvent(adjustedPoint.X, adjustedPoint.Y, false, modifiers);
+                }
             }
 
             base.OnMouseMove(e);
@@ -2290,15 +2293,18 @@ namespace CefSharp.Wpf
                 var point = e.GetPosition(this);
                 var modifiers = e.GetModifiers();
                 var isShiftKeyDown = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
-                var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
 
-                browser.SendMouseWheelEvent(
-                    adjustedPoint.X,
-                    adjustedPoint.Y,
-                    deltaX: isShiftKeyDown ? e.Delta : 0,
-                    deltaY: !isShiftKeyDown ? e.Delta : 0,
-                    modifiers: modifiers);
+                if (!mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y))
+                {
+                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
 
+                    browser.SendMouseWheelEvent(
+                        adjustedPoint.X,
+                        adjustedPoint.Y,
+                        deltaX: isShiftKeyDown ? e.Delta : 0,
+                        deltaY: !isShiftKeyDown ? e.Delta : 0,
+                        modifiers: modifiers);
+                }
                 e.Handled = true;
             }
 
@@ -2435,8 +2441,16 @@ namespace CefSharp.Wpf
                 }
                 else
                 {
-                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
-                    browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    if (mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y))
+                    {
+                        var ev = new KeyEvent {WindowsKeyCode = 27};
+                        browser.GetHost().SendKeyEvent(ev);
+                    }
+                    else
+                    {
+                        var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                        browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    }
                 }
 
                 e.Handled = true;

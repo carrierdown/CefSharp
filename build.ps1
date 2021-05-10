@@ -1,11 +1,11 @@
 ﻿param(
     [ValidateSet("vs2015", "vs2017", "vs2019", "nupkg-only", "gitlink")]
     [Parameter(Position = 0)] 
-    [string] $Target = "vs2015",
+    [string] $Target = "nupkg-only",
     [Parameter(Position = 1)]
-    [string] $Version = "86.0.240",
+    [string] $Version = "86.0.241.108",
     [Parameter(Position = 2)]
-    [string] $AssemblyVersion = "86.0.240"
+    [string] $AssemblyVersion = "86.0.241.108"
 )
 
 $WorkingDir = split-path -parent $MyInvocation.MyCommand.Definition
@@ -208,6 +208,7 @@ function Msvs
         "/p:VisualStudioVersion=$VisualStudioVersion",
         "/p:Configuration=$Configuration",
         "/p:Platform=$Arch",
+        "/p:VCTargetsPath=""C:\Program Files (x86)\MSBuild\Microsoft.Cpp\v4.0\v140""",
         "/verbosity:normal"
     )
 
