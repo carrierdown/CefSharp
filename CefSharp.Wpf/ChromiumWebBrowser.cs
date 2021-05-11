@@ -25,6 +25,7 @@ using Point = System.Windows.Point;
 using Range = CefSharp.Structs.Range;
 using Rect = CefSharp.Structs.Rect;
 using Size = System.Windows.Size;
+using CefSharpPoint = CefSharp.Structs.Point;
 
 namespace CefSharp.Wpf
 {
@@ -124,7 +125,7 @@ namespace CefSharp.Wpf
         /// </summary>
         private IRequestContext requestContext;
         /// <summary>
-        /// Keep a short term copy of IDragData, so when calling DoDragDrop, DragEnter is called, 
+        /// Keep a short term copy of IDragData, so when calling DoDragDrop, DragEnter is called,
         /// we can reuse the drag data provided from CEF
         /// </summary>
         private IDragData currentDragData;
@@ -137,6 +138,8 @@ namespace CefSharp.Wpf
         /// NOTE: Needs to be static for OnApplicationExit
         /// </summary>
         private static bool DesignMode;
+
+        private MouseTeleport mouseTeleport = new MouseTeleport();
 
         private bool resizeHackForIssue2779Enabled;
         private CefSharp.Structs.Size? resizeHackForIssue2779Size;
@@ -245,7 +248,7 @@ namespace CefSharp.Wpf
         public event EventHandler<PaintEventArgs> Paint;
 
         /// <summary>
-        /// Raised every time <see cref="IRenderWebBrowser.OnVirtualKeyboardRequested(IBrowser, TextInputMode)"/> is called. 
+        /// Raised every time <see cref="IRenderWebBrowser.OnVirtualKeyboardRequested(IBrowser, TextInputMode)"/> is called.
         /// It's important to note this event is fired on a CEF UI thread, which by default is not the same as your application UI thread
         /// </summary>
         public event EventHandler<VirtualKeyboardRequestedEventArgs> VirtualKeyboardRequested;
@@ -468,7 +471,7 @@ namespace CefSharp.Wpf
         /// var hwndSource = (HwndSource)PresentationSource.FromVisual(this);
         /// var browser = new ChromiumWebBrowser(hwndSource, "github.com", 1024, 768);
         /// browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
-        /// 
+        ///
         /// private void OnBrowserLoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
         /// {
         ///   if (e.IsLoading == false)
@@ -815,10 +818,10 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Called when the user starts dragging content in the web view. 
+        /// Called when the user starts dragging content in the web view.
         /// OS APIs that run a system message loop may be used within the StartDragging call.
         /// Don't call any of IBrowserHost::DragSource*Ended* methods after returning false.
-        /// Call IBrowserHost.DragSourceEndedAt and DragSourceSystemDragEnded either synchronously or asynchronously to inform the web view that the drag operation has ended. 
+        /// Call IBrowserHost.DragSourceEndedAt and DragSourceSystemDragEnded either synchronously or asynchronously to inform the web view that the drag operation has ended.
         /// </summary>
         /// <param name="dragData"> Contextual information about the dragged content</param>
         /// <param name="allowedOps">allowed operations</param>
@@ -973,7 +976,12 @@ namespace CefSharp.Wpf
         /// <param name="isOpen">if set to <c>true</c> [is open].</param>
         void IRenderWebBrowser.OnPopupShow(bool isOpen)
         {
-            UiThreadRunAsync(() => { popupImage.Visibility = isOpen ? Visibility.Visible : Visibility.Hidden; });
+            UiThreadRunAsync(() => {
+                popupImage.Visibility = isOpen ? Visibility.Visible : Visibility.Hidden;
+                if (!isOpen) {
+                    mouseTeleport.Reset();
+                }
+            });
         }
 
         /// <summary>
@@ -1031,7 +1039,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Called when an on-screen keyboard should be shown or hidden for the specified browser. 
+        /// Called when an on-screen keyboard should be shown or hidden for the specified browser.
         /// </summary>
         /// <param name="browser">the browser</param>
         /// <param name="inputMode">specifies what kind of keyboard should be opened. If <see cref="TextInputMode.None"/>, any existing keyboard for this browser should be hidden.</param>
@@ -1261,7 +1269,7 @@ namespace CefSharp.Wpf
             DependencyProperty.Register(nameof(IsBrowserInitialized), typeof(bool), typeof(ChromiumWebBrowser), new PropertyMetadata(false, OnIsBrowserInitializedChanged));
 
         /// <summary>
-        /// Event called after the underlying CEF browser instance has been created. 
+        /// Event called after the underlying CEF browser instance has been created.
         /// </summary>
         public event DependencyPropertyChangedEventHandler IsBrowserInitializedChanged;
 
@@ -1763,7 +1771,7 @@ namespace CefSharp.Wpf
         /// <summary>
         /// Create the underlying CefBrowser instance with the specified <paramref name="initialSize"/>.
         /// This method should only be used in instances where you need the browser
-        /// to load before it's attached to the Visual Tree. 
+        /// to load before it's attached to the Visual Tree.
         /// </summary>
         /// <param name="parentWindowHwndSource">HwndSource for the Window that will host the browser.</param>
         /// <param name="initialSize">initial size</param>
@@ -2070,8 +2078,46 @@ namespace CefSharp.Wpf
             popupImage.Width = rect.Width;
             popupImage.Height = rect.Height;
 
-            Canvas.SetLeft(popupImage, rect.X);
-            Canvas.SetTop(popupImage, rect.Y);
+            int x = rect.X,
+                prevX = rect.X,
+                y = rect.Y,
+                prevY = rect.Y,
+                xOffset = 0,
+                yOffset = 0;
+
+            // if popup goes outside the view, try to reposition origin
+            if (rect.X + rect.Width > viewRect.Width)
+            {
+                x = viewRect.Width - rect.Width;
+                xOffset = prevX - x;
+            }
+
+            if (rect.Y + rect.Height > viewRect.Height)
+            {
+                y = y - rect.Height - 20;
+                yOffset = prevY - y;
+            }
+
+            // if x or y became negative, move them to 0 again.
+            if (x < 0)
+            {
+                x = 0;
+                xOffset = prevX;
+            }
+
+            if (y < 0)
+            {
+                y = 0;
+                yOffset = prevY;
+            }
+
+            if (x != prevX || y != prevY)
+            {
+                mouseTeleport.Update(xOffset, yOffset, rect, new Rect(x, y, x + rect.Width, y + rect.Height));
+            }
+
+            Canvas.SetLeft(popupImage, x);
+            Canvas.SetTop(popupImage, y);
         }
 
         /// <summary>
@@ -2167,7 +2213,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Keyboard.PreviewKeyDown" /> attached event reaches an
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Keyboard.PreviewKeyDown" /> attached event reaches an
         /// element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.KeyEventArgs" /> that contains the event data.</param>
@@ -2182,7 +2228,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Keyboard.PreviewKeyUp" /> attached event reaches an
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Keyboard.PreviewKeyUp" /> attached event reaches an
         /// element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.KeyEventArgs" /> that contains the event data.</param>
@@ -2211,7 +2257,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseMove" /> attached event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseMove" /> attached event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseEventArgs" /> that contains the event data.</param>
         protected override void OnMouseMove(MouseEventArgs e)
@@ -2227,14 +2273,17 @@ namespace CefSharp.Wpf
                 var point = e.GetPosition(this);
                 var modifiers = e.GetModifiers();
 
-                browser.GetHost().SendMouseMoveEvent((int)point.X, (int)point.Y, false, modifiers);
+                if (!mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y)) {
+                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                    browser.GetHost().SendMouseMoveEvent(adjustedPoint.X, adjustedPoint.Y, false, modifiers);
+                }
             }
 
             base.OnMouseMove(e);
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseWheel" /> attached event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseWheel" /> attached event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseWheelEventArgs" /> that contains the event data.</param>
         protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -2244,16 +2293,18 @@ namespace CefSharp.Wpf
                 var point = e.GetPosition(this);
                 var modifiers = e.GetModifiers();
                 var isShiftKeyDown = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
-                var pointX = (int)point.X;
-                var pointY = (int)point.Y;
 
-                browser.SendMouseWheelEvent(
-                    pointX,
-                    pointY,
-                    deltaX: isShiftKeyDown ? e.Delta : 0,
-                    deltaY: !isShiftKeyDown ? e.Delta : 0,
-                    modifiers: modifiers);
+                if (!mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y))
+                {
+                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
 
+                    browser.SendMouseWheelEvent(
+                        adjustedPoint.X,
+                        adjustedPoint.Y,
+                        deltaX: isShiftKeyDown ? e.Delta : 0,
+                        deltaY: !isShiftKeyDown ? e.Delta : 0,
+                        modifiers: modifiers);
+                }
                 e.Handled = true;
             }
 
@@ -2261,7 +2312,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseDown" /> attached event reaches an
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseDown" /> attached event reaches an
         /// element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseButtonEventArgs" /> that contains the event data.
@@ -2293,7 +2344,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseUp" /> routed event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseUp" /> routed event reaches an element in its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseButtonEventArgs" /> that contains the event data. The event data reports that the mouse button was released.</param>
         protected override void OnMouseUp(MouseButtonEventArgs e)
@@ -2323,7 +2374,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseLeave" /> attached event is raised on this element. Implement this method to add class handling for this event.
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.MouseLeave" /> attached event is raised on this element. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseEventArgs" /> that contains the event data.</param>
         protected override void OnMouseLeave(MouseEventArgs e)
@@ -2348,7 +2399,7 @@ namespace CefSharp.Wpf
         }
 
         /// <summary>
-        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.LostMouseCapture" /> attached event reaches an element in
+        /// Invoked when an unhandled <see cref="E:System.Windows.Input.Mouse.LostMouseCapture" /> attached event reaches an element in
         /// its route that is derived from this class. Implement this method to add class handling for this event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.Windows.Input.MouseEventArgs" /> that contains event data.</param>
@@ -2390,7 +2441,15 @@ namespace CefSharp.Wpf
                 }
                 else
                 {
-                    browser.GetHost().SendMouseClickEvent((int)point.X, (int)point.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    if (mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y))
+                    {
+                        browser.GetHost().SendMouseClickEvent(mouseTeleport.originalRect.X + mouseTeleport.originalRect.Width, (int)point.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    }
+                    else
+                    {
+                        var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                        browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    }
                 }
 
                 e.Handled = true;
