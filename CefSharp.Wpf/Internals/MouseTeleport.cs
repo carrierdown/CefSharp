@@ -1,4 +1,6 @@
-﻿using CefSharp.Structs;
+using System;
+using System.Diagnostics;
+using CefSharp.Structs;
 
 namespace CefSharp.Wpf.Internals
 {
@@ -9,8 +11,21 @@ namespace CefSharp.Wpf.Internals
         public int xOffset { get; private set; }
         public int yOffset { get; private set; }
 
+        private Stopwatch stopwatch;
+
+        public bool isActive {
+            get
+            {
+
+                return originalRect.Width > 0;
+            }
+        }
+
+        private int mouseUpCounter;
+
         public void Update(int xOffset, int yOffset, Rect originalRect, Rect teleportingRect)
         {
+            // Console.WriteLine("Update called");
             this.originalRect = originalRect;
             this.teleportingRect = teleportingRect;
             this.xOffset = xOffset;
@@ -25,10 +40,17 @@ namespace CefSharp.Wpf.Internals
 
         public void Reset()
         {
-            originalRect = new Rect();
+            Console.WriteLine("Reset called");
             originalRect = new Rect();
             xOffset = 0;
             yOffset = 0;
+            mouseUpCounter = 0;
+            stopwatch = new Stopwatch();
+        }
+
+        public bool ShouldClickPropagate()
+        {
+            return ++mouseUpCounter > 1;
         }
 
         public bool IsInsideOriginalRect(int x, int y)
@@ -39,7 +61,7 @@ namespace CefSharp.Wpf.Internals
                    y < originalRect.Y + originalRect.Height;
         }
 
-        private bool IsInsideTeleportingRect(int x, int y)
+        public bool IsInsideTeleportingRect(int x, int y)
         {
             return x >= teleportingRect.X &&
                    x < teleportingRect.X + teleportingRect.Width &&

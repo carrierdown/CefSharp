@@ -3,6 +3,7 @@
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -140,6 +141,8 @@ namespace CefSharp.Wpf
         private static bool DesignMode;
 
         private MouseTeleport mouseTeleport = new MouseTeleport();
+
+        private Stopwatch stopwatch;
 
         private bool resizeHackForIssue2779Enabled;
         private CefSharp.Structs.Size? resizeHackForIssue2779Size;
@@ -2118,6 +2121,9 @@ namespace CefSharp.Wpf
 
             Canvas.SetLeft(popupImage, x);
             Canvas.SetTop(popupImage, y);
+
+            stopwatch = new Stopwatch();
+            stopwatch.Start();
         }
 
         /// <summary>
@@ -2441,17 +2447,47 @@ namespace CefSharp.Wpf
                 }
                 else
                 {
-                    if (mouseTeleport.IsInsideOriginalRect((int)point.X, (int)point.Y))
+                    var x = (int)point.X;
+                    var y = (int)point.Y;
+                    var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                    Console.WriteLine($"OnMouseButton: {x},{y},{mouseUp}");
+                    if (!mouseTeleport.isActive)
                     {
-                        browser.GetHost().SendMouseClickEvent(mouseTeleport.originalRect.X + mouseTeleport.originalRect.Width, (int)point.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                        // Console.WriteLine("Sending original point");
+                        browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                    }
+                    else if (mouseTeleport.IsInsideTeleportingRect(x, y))
+                    {
+                        stopwatch.Stop();
+                        Console.WriteLine($"Stopwatch says {stopwatch.Elapsed} {stopwatch.ElapsedMilliseconds}");
+                        if (stopwatch.ElapsedMilliseconds < 200)
+                        {
+                            Console.WriteLine("Within grace interval");
+                            if (mouseTeleport.ShouldClickPropagate())
+                            {
+                                Console.WriteLine("Sending adjusted point");
+                                browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+                            } else Console.WriteLine("Filtered out mouseup");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Outside grace period, sending adjusted point");
+
+                            browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
+
+                        }
+                    }
+                    else if (mouseTeleport.IsInsideOriginalRect(x, y))
+                    {
+                        // Console.WriteLine("Sending rim point");
+                        browser.GetHost().SendMouseClickEvent(mouseTeleport.originalRect.X + mouseTeleport.originalRect.Width, y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
                     }
                     else
                     {
-                        var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
+                        // Console.WriteLine("Sending adjusted point 2");
                         browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
                     }
                 }
-
                 e.Handled = true;
             }
         }
