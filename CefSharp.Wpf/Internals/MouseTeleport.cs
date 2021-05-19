@@ -16,7 +16,6 @@ namespace CefSharp.Wpf.Internals
         public bool isActive {
             get
             {
-
                 return originalRect.Width > 0;
             }
         }
@@ -40,7 +39,7 @@ namespace CefSharp.Wpf.Internals
 
         public void Reset()
         {
-            Console.WriteLine("Reset called");
+            // Console.WriteLine("Reset called");
             originalRect = new Rect();
             xOffset = 0;
             yOffset = 0;

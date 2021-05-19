@@ -2450,7 +2450,7 @@ namespace CefSharp.Wpf
                     var x = (int)point.X;
                     var y = (int)point.Y;
                     var adjustedPoint = mouseTeleport.GetAdjustedMouseCoords((int)point.X, (int)point.Y);
-                    Console.WriteLine($"OnMouseButton: {x},{y},{mouseUp}");
+                    // Console.WriteLine($"OnMouseButton: {x},{y},{mouseUp}");
                     if (!mouseTeleport.isActive)
                     {
                         // Console.WriteLine("Sending original point");
@@ -2459,19 +2459,19 @@ namespace CefSharp.Wpf
                     else if (mouseTeleport.IsInsideTeleportingRect(x, y))
                     {
                         stopwatch.Stop();
-                        Console.WriteLine($"Stopwatch says {stopwatch.Elapsed} {stopwatch.ElapsedMilliseconds}");
+                        // Console.WriteLine($"Stopwatch says {stopwatch.Elapsed} {stopwatch.ElapsedMilliseconds}");
                         if (stopwatch.ElapsedMilliseconds < 200)
                         {
-                            Console.WriteLine("Within grace interval");
+                            // Console.WriteLine("Within grace interval");
                             if (mouseTeleport.ShouldClickPropagate())
                             {
-                                Console.WriteLine("Sending adjusted point");
+                                // Console.WriteLine("Sending adjusted point");
                                 browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
-                            } else Console.WriteLine("Filtered out mouseup");
+                            } //else Console.WriteLine("Filtered out mouseup");
                         }
                         else
                         {
-                            Console.WriteLine("Outside grace period, sending adjusted point");
+                            // Console.WriteLine("Outside grace period, sending adjusted point");
 
                             browser.GetHost().SendMouseClickEvent(adjustedPoint.X, adjustedPoint.Y, (MouseButtonType)e.ChangedButton, mouseUp, e.ClickCount, modifiers);
 
